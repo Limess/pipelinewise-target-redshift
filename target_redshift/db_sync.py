@@ -218,7 +218,8 @@ class DbSync:
         self.s3 = boto3.client(
             's3',
             aws_access_key_id=self.connection_config['aws_access_key_id'],
-            aws_secret_access_key=self.connection_config['aws_secret_access_key']
+            aws_secret_access_key=self.connection_config['aws_secret_access_key'],
+            aws_session_token=self.connection_config['aws_session_token'],
         )
 
         # Set further properties by singer SCHEMA message
@@ -337,7 +338,7 @@ class DbSync:
     def put_to_s3(self, file, stream, count):
         logger.info("Uploading {} rows to S3".format(count))
 
-        # Generating key in S3 bucket 
+        # Generating key in S3 bucket
         bucket = self.connection_config['s3_bucket']
         s3_key_prefix = self.connection_config.get('s3_key_prefix', '')
         s3_key = "{}pipelinewise_{}_{}.csv".format(s3_key_prefix, stream, datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
@@ -382,19 +383,21 @@ class DbSync:
                 """)
 
                 # Step 2: Load into the stage table
-                copy_sql = """COPY {} ({}) FROM 's3://{}/{}'
-                    ACCESS_KEY_ID '{}'
-                    SECRET_ACCESS_KEY '{}'
-                    {}
+                copy_sql = """COPY {table} ({columns}) FROM 's3://{s3_bucket}/{s3_key}'
+                    ACCESS_KEY_ID '{aws_access_key_id}'
+                    SECRET_ACCESS_KEY '{aws_secret_access_key}'
+                    {aws_session_token}
+                    {copy_options}
                     DELIMITER ',' REMOVEQUOTES ESCAPE
                 """.format(
-                    self.stage_table,
-                    ', '.join([c['name'] for c in columns_with_trans]),
-                    self.connection_config['s3_bucket'],
-                    s3_key,
-                    self.connection_config['aws_access_key_id'],
-                    self.connection_config['aws_secret_access_key'],
-                    copy_options
+                    table=self.stage_table,
+                    columns=', '.join([c['name'] for c in columns_with_trans]),
+                    s3_bucket=self.connection_config['s3_bucket'],
+                    s3_key=s3_key,
+                    aws_access_key_id=self.connection_config['aws_access_key_id'],
+                    aws_secret_access_key=self.connection_config['aws_secret_access_key'],
+                    aws_session_token="SESSION_TOKEN '{}'".format(self.connection_config['aws_session_token']) if self.connection_config['aws_session_token'] else '',
+                    copy_options=copy_options
                 )
                 logger.debug("REDSHIFT - {}".format(copy_sql))
                 cur.execute(copy_sql)
@@ -645,4 +648,3 @@ class DbSync:
         else:
             logger.info("Table '{}' exists".format(self.target_table))
             self.update_columns(table_columns_cache)
-

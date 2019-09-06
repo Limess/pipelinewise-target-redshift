@@ -78,6 +78,7 @@ Full list of options in `config.json`:
 | dbname                              | String  | Yes        | Redshift Database name                                        |
 | aws_access_key_id                   | String  | Yes        | S3 Access Key Id                                              |
 | aws_secret_access_key               | String  | Yes        | S3 Secret Access Key                                          |
+| aws_session_token                   | String  | No         | S3 AWS STS token for temporary credentials                |
 | s3_bucket                           | String  | Yes        | S3 Bucket name                                                |
 | s3_key_prefix                       | String  |            | (Default: None) A static prefix before the generated S3 key names. Using prefixes you can upload files into specific directories in the S3 bucket. |
 | copy_options                        | String  |            | (Default: `EMPTYASNULL BLANKSASNULL TRIMBLANKS TRUNCATECOLUMNS TIMEFORMAT 'auto' COMPUPDATE OFF STATUPDATE OFF`). Parameters to use in the COPY command when loading data to Redshift. Some basic file formatting parameters are fixed values and not recommended overriding them by custom values. They are like: `CSV GZIP DELIMITER ',' REMOVEQUOTES ESCAPE` |
