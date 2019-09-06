@@ -78,6 +78,7 @@ Full list of options in `config.json`:
 | dbname                              | String  | Yes        | Redshift Database name                                        |
 | aws_access_key_id                   | String  | Yes        | S3 Access Key Id                                              |
 | aws_secret_access_key               | String  | Yes        | S3 Secret Access Key                                          |
+| aws_session_token                   | String  | No         | S3 AWS STS token for temporary credentials                |
 | s3_bucket                           | String  | Yes        | S3 Bucket name                                                |
 | s3_key_prefix                       | String  |            | (Default: None) A static prefix before the generated S3 key names. Using prefixes you can upload files into specific directories in the S3 bucket. |
 | batch_size                          | Integer |            | (Default: 100000) Maximum number of rows in each batch. At the end of each batch, the rows in the batch are loaded into Redshift. |
