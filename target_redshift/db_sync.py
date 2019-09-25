@@ -370,6 +370,8 @@ class DbSync:
                 cur.execute(self.create_table_query(is_stage=True))
 
                 # Step 2: Load into the stage table
+                aws_session_token = self.connection_config.get("aws_session_token", "")
+
                 copy_sql = """COPY {} ({}) FROM 's3://{}/{}'
                     ACCESS_KEY_ID '{}'
                     SECRET_ACCESS_KEY '{}'
@@ -379,13 +381,14 @@ class DbSync:
                     COMPUPDATE OFF STATUPDATE OFF
                 """.format(
                     self.stage_table,
-                    ', '.join([c['name'] for c in columns_with_trans]),
-                    self.connection_config['s3_bucket'],
+                    ", ".join([c["name"] for c in columns_with_trans]),
+                    self.connection_config["s3_bucket"],
                     s3_key,
-                    self.connection_config['aws_access_key_id'],
-                    self.connection_config['aws_secret_access_key'],
-                    "SESSION_TOKEN '{}'".format(self.connection_config['aws_session_token']) if self.connection_config['aws_session_token'] else ''
+                    self.connection_config["aws_access_key_id"],
+                    self.connection_config["aws_secret_access_key"],
+                    "SESSION_TOKEN '{}'".format(aws_session_token) if aws_session_token else "",
                 )
+
                 logger.debug("REDSHIFT - {}".format(copy_sql))
                 cur.execute(copy_sql)
 
