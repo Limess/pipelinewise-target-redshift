@@ -378,7 +378,7 @@ class DbSync:
                     {}
                     DELIMITER ',' REMOVEQUOTES ESCAPE
                     BLANKSASNULL TIMEFORMAT 'auto'
-                    COMPUPDATE PRESET STATUPDATE OFF
+                    COMPUPDATE ON STATUPDATE OFF
                 """.format(
                     self.stage_table,
                     ", ".join([c["name"] for c in columns_with_trans]),
