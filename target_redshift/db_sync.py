@@ -219,7 +219,7 @@ class DbSync:
             's3',
             aws_access_key_id=self.connection_config['aws_access_key_id'],
             aws_secret_access_key=self.connection_config['aws_secret_access_key'],
-            aws_session_token=self.connection_config['aws_session_token'],
+            aws_session_token=self.connection_config.get('aws_session_token'),
         )
 
         # Set further properties by singer SCHEMA message
@@ -396,7 +396,7 @@ class DbSync:
                     s3_key=s3_key,
                     aws_access_key_id=self.connection_config['aws_access_key_id'],
                     aws_secret_access_key=self.connection_config['aws_secret_access_key'],
-                    aws_session_token="SESSION_TOKEN '{}'".format(self.connection_config['aws_session_token']) if self.connection_config['aws_session_token'] else '',
+                    aws_session_token="SESSION_TOKEN '{}'".format(self.connection_config['aws_session_token']) if "aws_session_token" in self.connection_config else '',
                     copy_options=copy_options
                 )
                 logger.debug("REDSHIFT - {}".format(copy_sql))
