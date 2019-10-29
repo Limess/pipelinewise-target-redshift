@@ -215,9 +215,6 @@ class DbSync:
 
         # Init S3 client
         aws_session = boto3.session.Session(
-            aws_access_key_id=self.connection_config.get('aws_access_key_id'),
-            aws_secret_access_key=self.connection_config.get('aws_secret_access_key'),
-            aws_session_token=self.connection_config.get('aws_session_token'),
         )
         credentials = aws_session.get_credentials().get_frozen_credentials()
 
