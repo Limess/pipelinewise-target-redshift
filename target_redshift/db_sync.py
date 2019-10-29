@@ -217,9 +217,9 @@ class DbSync:
         # Init S3 client
         self.s3 = boto3.client(
             's3',
-            aws_access_key_id=self.connection_config['aws_access_key_id'],
-            aws_secret_access_key=self.connection_config['aws_secret_access_key'],
-            aws_session_token=self.connection_config.get('aws_session_token'),
+            # aws_access_key_id=self.connection_config['aws_access_key_id'],
+            # aws_secret_access_key=self.connection_config['aws_secret_access_key'],
+            # aws_session_token=self.connection_config.get('aws_session_token'),
         )
 
         # Set further properties by singer SCHEMA message
