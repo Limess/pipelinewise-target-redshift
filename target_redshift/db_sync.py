@@ -358,7 +358,7 @@ class DbSync:
         self.s3.delete_object(Bucket=bucket, Key=s3_key)
 
 
-    def load_csv(self, s3_key, count, gzip=False):
+    def load_csv(self, s3_key, count, compression=False):
         logger.info("Loading {} rows into '{}'".format(count, self.stage_table))
 
         # Get list if columns with types
@@ -397,11 +397,18 @@ class DbSync:
                     COMPUPDATE OFF STATUPDATE OFF
                 """)
 
+                if compression == "gzip":
+                    compression_option = " GZIP"
+                elif compression == "bzip2":
+                    compression_option = " BZIP2"
+                else:
+                    compression_option = ""
+
                 # Step 4: Load into the stage table
                 copy_sql = """COPY {table} ({columns}) FROM 's3://{s3_bucket}/{s3_key}'
                     {copy_credentials}
                     {copy_options}
-                    DELIMITER ',' REMOVEQUOTES ESCAPE{gzip_option}
+                    DELIMITER ',' REMOVEQUOTES ESCAPE{compression_option}
                 """.format(
                     table=self.stage_table,
                     columns=', '.join([c['name'] for c in columns_with_trans]),
@@ -409,7 +416,7 @@ class DbSync:
                     s3_key=s3_key,
                     copy_credentials=copy_credentials,
                     copy_options=copy_options,
-                    gzip_option=" gzip" if gzip else ""
+                    compression_option=compression_option
                 )
                 logger.debug("REDSHIFT - {}".format(copy_sql))
                 cur.execute(copy_sql)

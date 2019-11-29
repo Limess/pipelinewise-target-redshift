@@ -7,7 +7,7 @@ import os
 import sys
 import copy
 import gzip
-import shutil
+import bz2
 from datetime import datetime
 from decimal import Decimal
 from tempfile import NamedTemporaryFile, mkstemp
@@ -396,20 +396,23 @@ def load_stream_batch(
 
 
 def flush_records(config, stream, records_to_load, row_count, db_sync):
-    gzip = config.get("compression", "") == "gzip"
-    csv_fd, csv_file = mkstemp()
-    with open(csv_fd, "rb") as csv_f:
-        if gzip:
-            with gzip.open(csv_f, "rb+") as f:
-                for record in records_to_load.values():
-                    csv_line = db_sync.record_to_csv_line(record)
-                    f.write(bytes(csv_line + "\n", "UTF-8"))
-        else:
-            for record in records_to_load.values():
-                csv_line = db_sync.record_to_csv_line(record)
-                csv_f.write(bytes(csv_line + "\n", "UTF-8"))
+    compression = config.get("compression", "")
+    use_gzip = compression == "gzip"
+    use_bzip2 = compression == "bzip2"
 
-    s3_key = db_sync.put_to_s3(csv_file, stream, row_count, gzip)
+    if use_gzip:
+        open_method = gzip.open
+    elif use_bzip2:
+        open_method = bz2.open
+    else:
+        open_method = open
+    csv_fd, csv_file = mkstemp()
+    with open_method(csv_fd, "rb") as csv_f:
+        for record in records_to_load.values():
+            csv_line = db_sync.record_to_csv_line(record)
+            csv_f.write(bytes(csv_line + "\n", "UTF-8"))
+
+    s3_key = db_sync.put_to_s3(csv_file, stream, row_count, compression)
     db_sync.load_csv(s3_key, row_count)
     os.remove(csv_file)
     db_sync.delete_from_s3(s3_key)
