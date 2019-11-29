@@ -6,6 +6,8 @@ import json
 import os
 import sys
 import copy
+import gzip
+import shutil
 from datetime import datetime
 from decimal import Decimal
 from tempfile import NamedTemporaryFile, mkstemp
@@ -20,7 +22,9 @@ logger = singer.get_logger()
 
 DEFAULT_BATCH_SIZE_ROWS = 100000
 DEFAULT_PARALLELISM = 0  # 0 The number of threads used to flush tables
-DEFAULT_MAX_PARALLELISM = 16  # Don't use more than this number of threads by default when flushing streams in parallel
+DEFAULT_MAX_PARALLELISM = (
+    16
+)  # Don't use more than this number of threads by default when flushing streams in parallel
 
 
 def float_to_decimal(value):
@@ -42,11 +46,17 @@ def add_metadata_columns_to_schema(schema_message):
     Metadata columns gives information about data injections
     """
     extended_schema_message = schema_message
-    extended_schema_message['schema']['properties']['_sdc_extracted_at'] = {'type': ['null', 'string'],
-                                                                            'format': 'date-time'}
-    extended_schema_message['schema']['properties']['_sdc_batched_at'] = {'type': ['null', 'string'],
-                                                                          'format': 'date-time'}
-    extended_schema_message['schema']['properties']['_sdc_deleted_at'] = {'type': ['null', 'string']}
+    extended_schema_message["schema"]["properties"]["_sdc_extracted_at"] = {
+        "type": ["null", "string"],
+        "format": "date-time",
+    }
+    extended_schema_message["schema"]["properties"]["_sdc_batched_at"] = {
+        "type": ["null", "string"],
+        "format": "date-time",
+    }
+    extended_schema_message["schema"]["properties"]["_sdc_deleted_at"] = {
+        "type": ["null", "string"]
+    }
 
     return extended_schema_message
 
@@ -55,10 +65,12 @@ def add_metadata_values_to_record(record_message, stream_to_sync):
     """Populate metadata _sdc columns from incoming record message
     The location of the required attributes are fixed in the stream
     """
-    extended_record = record_message['record']
-    extended_record['_sdc_extracted_at'] = record_message.get('time_extracted')
-    extended_record['_sdc_batched_at'] = datetime.now().isoformat()
-    extended_record['_sdc_deleted_at'] = record_message.get('record', {}).get('_sdc_deleted_at')
+    extended_record = record_message["record"]
+    extended_record["_sdc_extracted_at"] = record_message.get("time_extracted")
+    extended_record["_sdc_batched_at"] = datetime.now().isoformat()
+    extended_record["_sdc_deleted_at"] = record_message.get("record", {}).get(
+        "_sdc_deleted_at"
+    )
 
     return extended_record
 
@@ -66,14 +78,14 @@ def add_metadata_values_to_record(record_message, stream_to_sync):
 def emit_state(state):
     if state is not None:
         line = json.dumps(state)
-        logger.info('Emitting state {}'.format(line))
+        logger.info("Emitting state {}".format(line))
         sys.stdout.write("{}\n".format(line))
         sys.stdout.flush()
 
 
 def get_schema_names_from_config(config):
-    default_target_schema = config.get('default_target_schema')
-    schema_mapping = config.get('schema_mapping', {})
+    default_target_schema = config.get("default_target_schema")
+    schema_mapping = config.get("schema_mapping", {})
     schema_names = []
 
     if default_target_schema:
@@ -81,7 +93,7 @@ def get_schema_names_from_config(config):
 
     if schema_mapping:
         for source_schema, target in schema_mapping.items():
-            schema_names.append(target.get('target_schema'))
+            schema_names.append(target.get("target_schema"))
 
     return schema_names
 
@@ -99,14 +111,16 @@ def persist_lines(config, lines) -> None:
     stream_to_sync = {}
     total_row_count = {}
     table_columns_cache = None
-    batch_size_rows = config.get('batch_size_rows', DEFAULT_BATCH_SIZE_ROWS)
+    batch_size_rows = config.get("batch_size_rows", DEFAULT_BATCH_SIZE_ROWS)
 
     # Cache the available schemas, tables and columns from redshift if not disabled in config
     # The cache will be used later use to avoid lot of small queries hitting redshift
-    if not ('disable_table_cache' in config and config['disable_table_cache'] == True):
+    if not ("disable_table_cache" in config and config["disable_table_cache"] == True):
         logger.info("Caching available catalog objects in redshift...")
         filter_schemas = get_schema_names_from_config(config)
-        table_columns_cache = DbSync(config).get_table_columns(filter_schemas=filter_schemas)
+        table_columns_cache = DbSync(config).get_table_columns(
+            filter_schemas=filter_schemas
+        )
 
     # Loop over lines from stdin
     for line in lines:
@@ -116,36 +130,43 @@ def persist_lines(config, lines) -> None:
             logger.error("Unable to parse:\n{}".format(line))
             raise
 
-        if 'type' not in o:
+        if "type" not in o:
             raise Exception("Line is missing required key 'type': {}".format(line))
 
-        t = o['type']
+        t = o["type"]
 
-        if t == 'RECORD':
-            if 'stream' not in o:
-                raise Exception("Line is missing required key 'stream': {}".format(line))
-            if o['stream'] not in schemas:
+        if t == "RECORD":
+            if "stream" not in o:
                 raise Exception(
-                    "A record for stream {} was encountered before a corresponding schema".format(o['stream']))
+                    "Line is missing required key 'stream': {}".format(line)
+                )
+            if o["stream"] not in schemas:
+                raise Exception(
+                    "A record for stream {} was encountered before a corresponding schema".format(
+                        o["stream"]
+                    )
+                )
 
             # Get schema for this record's stream
-            stream = o['stream']
+            stream = o["stream"]
 
             # Validate record
             try:
-                validators[stream].validate(float_to_decimal(o['record']))
+                validators[stream].validate(float_to_decimal(o["record"]))
             except Exception as ex:
                 if type(ex).__name__ == "InvalidOperation":
                     logger.error(
                         "Data validation failed and cannot load to destination. RECORD: {}\n'multipleOf' validations "
                         "that allows long precisions are not supported (i.e. with 15 digits or more). Try removing "
-                        "'multipleOf' methods from JSON schema. "
-                        .format(o['record']))
+                        "'multipleOf' methods from JSON schema. ".format(o["record"])
+                    )
                     raise ex
 
-            primary_key_string = stream_to_sync[stream].record_primary_key_string(o['record'])
+            primary_key_string = stream_to_sync[stream].record_primary_key_string(
+                o["record"]
+            )
             if not primary_key_string:
-                primary_key_string = 'RID-{}'.format(total_row_count[stream])
+                primary_key_string = "RID-{}".format(total_row_count[stream])
 
             if stream not in records_to_load:
                 records_to_load[stream] = {}
@@ -156,14 +177,16 @@ def persist_lines(config, lines) -> None:
                 total_row_count[stream] += 1
 
             # append record
-            if config.get('add_metadata_columns') or config.get('hard_delete'):
-                records_to_load[stream][primary_key_string] = add_metadata_values_to_record(o, stream_to_sync[stream])
+            if config.get("add_metadata_columns") or config.get("hard_delete"):
+                records_to_load[stream][
+                    primary_key_string
+                ] = add_metadata_values_to_record(o, stream_to_sync[stream])
             else:
-                records_to_load[stream][primary_key_string] = o['record']
+                records_to_load[stream][primary_key_string] = o["record"]
 
             if row_count[stream] >= batch_size_rows:
                 # flush all streams, delete records if needed, reset counts and then emit current state
-                if config.get('flush_all_streams'):
+                if config.get("flush_all_streams"):
                     filter_streams = None
                 else:
                     filter_streams = [stream]
@@ -176,32 +199,42 @@ def persist_lines(config, lines) -> None:
                     config,
                     state,
                     flushed_state,
-                    filter_streams=filter_streams)
+                    filter_streams=filter_streams,
+                )
 
                 # emit last encountered state
                 emit_state(copy.deepcopy(flushed_state))
 
-        elif t == 'SCHEMA':
-            if 'stream' not in o:
-                raise Exception("Line is missing required key 'stream': {}".format(line))
+        elif t == "SCHEMA":
+            if "stream" not in o:
+                raise Exception(
+                    "Line is missing required key 'stream': {}".format(line)
+                )
 
-            stream = o['stream']
+            stream = o["stream"]
 
             schemas[stream] = o
-            schema = float_to_decimal(o['schema'])
+            schema = float_to_decimal(o["schema"])
             validators[stream] = Draft4Validator(schema, format_checker=FormatChecker())
 
             # flush records from previous stream SCHEMA
             # if same stream has been encountered again, it means the schema might have been altered
             # so previous records need to be flushed
             if row_count.get(stream, 0) > 0:
-                flushed_state = flush_streams(records_to_load, row_count, stream_to_sync, config, state, flushed_state)
+                flushed_state = flush_streams(
+                    records_to_load,
+                    row_count,
+                    stream_to_sync,
+                    config,
+                    state,
+                    flushed_state,
+                )
 
                 # emit latest encountered state
                 emit_state(flushed_state)
 
             # key_properties key must be available in the SCHEMA message.
-            if 'key_properties' not in o:
+            if "key_properties" not in o:
                 raise Exception("key_properties field is required")
 
             # Log based and Incremental replications on tables with no Primary Key
@@ -212,14 +245,23 @@ def persist_lines(config, lines) -> None:
             #  1) Set ` 'primary_key_required': false ` in the target-redshift config.json
             #  or
             #  2) Use fastsync [postgres-to-redshift, mysql-to-redshift, etc.]
-            if config.get('primary_key_required', True) and len(o['key_properties']) == 0:
-                logger.critical("Primary key is set to mandatory but not defined in the [{}] stream".format(stream))
+            if (
+                config.get("primary_key_required", True)
+                and len(o["key_properties"]) == 0
+            ):
+                logger.critical(
+                    "Primary key is set to mandatory but not defined in the [{}] stream".format(
+                        stream
+                    )
+                )
                 raise Exception("key_properties field is required")
 
-            key_properties[stream] = o['key_properties']
+            key_properties[stream] = o["key_properties"]
 
-            if config.get('add_metadata_columns') or config.get('hard_delete'):
-                stream_to_sync[stream] = DbSync(config, add_metadata_columns_to_schema(o))
+            if config.get("add_metadata_columns") or config.get("hard_delete"):
+                stream_to_sync[stream] = DbSync(
+                    config, add_metadata_columns_to_schema(o)
+                )
             else:
                 stream_to_sync[stream] = DbSync(config, o)
 
@@ -228,41 +270,46 @@ def persist_lines(config, lines) -> None:
 
             row_count[stream] = 0
             total_row_count[stream] = 0
-            csv_files_to_load[stream] = NamedTemporaryFile(mode='w+b')
+            csv_files_to_load[stream] = NamedTemporaryFile(mode="w+b")
 
-        elif t == 'ACTIVATE_VERSION':
-            logger.debug('ACTIVATE_VERSION message')
+        elif t == "ACTIVATE_VERSION":
+            logger.debug("ACTIVATE_VERSION message")
 
-        elif t == 'STATE':
-            logger.debug('Setting state to {}'.format(o['value']))
-            state = o['value']
+        elif t == "STATE":
+            logger.debug("Setting state to {}".format(o["value"]))
+            state = o["value"]
 
             # Initially set flushed state
             if not flushed_state:
                 flushed_state = copy.deepcopy(state)
 
         else:
-            raise Exception("Unknown message type {} in message {}"
-                            .format(o['type'], o))
+            raise Exception(
+                "Unknown message type {} in message {}".format(o["type"], o)
+            )
 
     # if some bucket has records that need to be flushed but haven't reached batch size
     # then flush all buckets.
     if sum(row_count.values()) > 0:
         # flush all streams one last time, delete records if needed, reset counts and then emit current state
-        flushed_state = flush_streams(records_to_load, row_count, stream_to_sync, config, state, flushed_state)
+        flushed_state = flush_streams(
+            records_to_load, row_count, stream_to_sync, config, state, flushed_state
+        )
 
     # emit latest state
     emit_state(copy.deepcopy(flushed_state))
 
+
 # pylint: disable=too-many-arguments
 def flush_streams(
-        streams,
-        row_count,
-        stream_to_sync,
-        config,
-        state,
-        flushed_state,
-        filter_streams=None):
+    streams,
+    row_count,
+    stream_to_sync,
+    config,
+    state,
+    flushed_state,
+    filter_streams=None,
+):
     """
     Flushes all buckets and resets records count to 0 as well as empties records to load list
     :param streams: dictionary with records to load per stream
@@ -296,14 +343,18 @@ def flush_streams(
         streams_to_flush = streams.keys()
 
     # Single-host, thread-based parallelism
-    with parallel_backend('threading', n_jobs=parallelism):
-        Parallel()(delayed(load_stream_batch)(
-            stream=stream,
-            records_to_load=streams[stream],
-            row_count=row_count,
-            db_sync=stream_to_sync[stream],
-            delete_rows=config.get('hard_delete')
-        ) for (stream) in streams_to_flush)
+    with parallel_backend("threading", n_jobs=parallelism):
+        Parallel()(
+            delayed(load_stream_batch)(
+                config=config,
+                stream=stream,
+                records_to_load=streams[stream],
+                row_count=row_count,
+                db_sync=stream_to_sync[stream],
+                delete_rows=config.get("hard_delete"),
+            )
+            for (stream) in streams_to_flush
+        )
 
     # reset flushed stream records to empty to avoid flushing same records
     for stream in streams_to_flush:
@@ -312,12 +363,14 @@ def flush_streams(
         # Update flushed streams
         if filter_streams:
             # update flushed_state position if we have state information for the stream
-            if stream in state.get('bookmarks', {}):
+            if stream in state.get("bookmarks", {}):
                 # Create bookmark key if not exists
-                if 'bookmarks' not in flushed_state:
-                    flushed_state['bookmarks'] = {}
+                if "bookmarks" not in flushed_state:
+                    flushed_state["bookmarks"] = {}
                 # Copy the stream bookmark from the latest state
-                flushed_state['bookmarks'][stream] = copy.deepcopy(state['bookmarks'][stream])
+                flushed_state["bookmarks"][stream] = copy.deepcopy(
+                    state["bookmarks"][stream]
+                )
 
         # If we flush every bucket use the latest state
         else:
@@ -327,10 +380,12 @@ def flush_streams(
     return flushed_state
 
 
-def load_stream_batch(stream, records_to_load, row_count, db_sync, delete_rows=False):
+def load_stream_batch(
+    config, stream, records_to_load, row_count, db_sync, delete_rows=False
+):
     # Load into redshift
     if row_count[stream] > 0:
-        flush_records(stream, records_to_load, row_count[stream], db_sync)
+        flush_records(config, stream, records_to_load, row_count[stream], db_sync)
 
         # Delete soft-deleted, flagged rows - where _sdc_deleted at is not null
         if delete_rows:
@@ -340,14 +395,21 @@ def load_stream_batch(stream, records_to_load, row_count, db_sync, delete_rows=F
         row_count[stream] = 0
 
 
-def flush_records(stream, records_to_load, row_count, db_sync):
+def flush_records(config, stream, records_to_load, row_count, db_sync):
+    gzip = config.get("compression", "") == "gzip"
     csv_fd, csv_file = mkstemp()
-    with open(csv_fd, 'w+b') as f:
-        for record in records_to_load.values():
-            csv_line = db_sync.record_to_csv_line(record)
-            f.write(bytes(csv_line + '\n', 'UTF-8'))
+    with open(csv_fd, "rb") as csv_f:
+        if gzip:
+            with gzip.open(csv_f, "rb+") as f:
+                for record in records_to_load.values():
+                    csv_line = db_sync.record_to_csv_line(record)
+                    f.write(bytes(csv_line + "\n", "UTF-8"))
+        else:
+            for record in records_to_load.values():
+                csv_line = db_sync.record_to_csv_line(record)
+                csv_f.write(bytes(csv_line + "\n", "UTF-8"))
 
-    s3_key = db_sync.put_to_s3(csv_file, stream, row_count)
+    s3_key = db_sync.put_to_s3(csv_file, stream, row_count, gzip)
     db_sync.load_csv(s3_key, row_count)
     os.remove(csv_file)
     db_sync.delete_from_s3(s3_key)
@@ -355,7 +417,7 @@ def flush_records(stream, records_to_load, row_count, db_sync):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', help='Config file')
+    parser.add_argument("-c", "--config", help="Config file")
     args = parser.parse_args()
 
     if args.config:
@@ -364,11 +426,11 @@ def main():
     else:
         config = {}
 
-    singer_messages = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    singer_messages = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
     persist_lines(config, singer_messages)
 
     logger.debug("Exiting normally")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
