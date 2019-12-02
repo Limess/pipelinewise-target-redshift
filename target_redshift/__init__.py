@@ -400,13 +400,15 @@ def flush_records(config, stream, records_to_load, row_count, db_sync):
     use_gzip = compression == "gzip"
     use_bzip2 = compression == "bzip2"
 
+    open_method = open
+    suffix = ""
     if use_gzip:
         open_method = gzip.open
+        suffix = ".gz"
     elif use_bzip2:
         open_method = bz2.open
-    else:
-        open_method = open
-    csv_fd, csv_file = mkstemp()
+        suffix = ".bz2"
+    csv_fd, csv_file = mkstemp(suffix=suffix)
     with open_method(csv_fd, "rb") as csv_f:
         for record in records_to_load.values():
             csv_line = db_sync.record_to_csv_line(record)
