@@ -18,7 +18,7 @@ METADATA_COLUMNS = ["_sdc_extracted_at", "_sdc_batched_at", "_sdc_deleted_at"]
 
 class TestTargetRedshift(object):
     """
-    UnIntegrationit Tests for PipelineWise Target Redshift
+    Integration Tests for PipelineWise Target Redshift
     """
 
     def setup_method(self):
